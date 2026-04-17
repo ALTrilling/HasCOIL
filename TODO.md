@@ -25,6 +25,7 @@ https://en.wikipedia.org/wiki/Mogensen%E2%80%93Scott_encoding
 
 Scott encodings make brain happy
 
+
 ```py
 zero  = lambda on_zero: lambda on_succ: on_zero
 succ  = lambda n: lambda on_zero: lambda on_succ: on_succ(n)
@@ -165,19 +166,44 @@ def maybe_map(f, m):
     return maybe_match(m, on_nothing=nothing, on_just=lambda x: just(f(x)))
 ```
 
+From https://github.com/HigherOrderCO/HVM2/blob/73da3bbc4b222fb8f044fcc5dad202e9752a0abc/HOW.md
 ```clj
-(:book 
-
-    ; [(Fst (Pair x y)) :> x]
-    (:include "./book/*")
+; (+ 1 {2 3})
+; (let {x y} 67)
+(let {x y} [(+ 1 1) (+ 2 2) (+ 3 3)])
+(Pair x y)
+; Evaluated by
+(let {x y} [(+ 2 2) (+3 3)])
+(let {a b} (+ 1 1))
+(let {a b} 2)
+(Pair
+  2 : x
+  2 : y
 )
 
+; (Cons (+ 1 1) (Cons (+ 2 2) (Cons (+ 3 3) Nil)))
 
-(BODY)
-(dup {a b} 67)
 
-(Cons (+ 1 1) (Cons (+ 2 2) (Cons (+ 3 3) Nil)))
+
+(:main
+  
+)
 ```
 
+<!---->
+<!-- ```clj -->
+<!-- (:book  -->
+<!---->
+<!--     ; [(Fst (Pair x y)) :> x] -->
+<!--     (:include "./book/*") -->
+<!-- ) -->
+<!---->
+<!---->
+<!-- (BODY) -->
+<!-- (dup {a b} 67) -->
+<!---->
+<!-- (Cons (+ 1 1) (Cons (+ 2 2) (Cons (+ 3 3) Nil))) -->
+<!-- ``` -->
+<!---->
 Scott encodings make brain happy
 

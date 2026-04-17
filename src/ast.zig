@@ -16,6 +16,7 @@ pub const Token = struct {
     };
 };
 
+
 pub fn slice_get(slice: anytype, index: usize) ?(switch (@typeInfo(@typeInfo(@TypeOf(slice)).pointer.child)) {
     .pointer => |contained| contained.child,
     else => @typeInfo(@TypeOf(slice)).pointer.child
@@ -121,6 +122,7 @@ pub const Tokenizer = struct {
                 self.index += 1;
                 while((('a' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'z'))
                     or (('A' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'Z'))
+                    or (('0' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '9'))
                     or slice_get(self.source, self.index).? == '_') {
                     self.index += 1;
                 }
@@ -168,4 +170,156 @@ test "Tokenizer" {
             try std.testing.expectEqualStrings(test_string[token.start..token.end], test_string_reprs[i]);
         }
     }
+    // Multi-line testing
+    {
+        var test_string: []const u8 = "(:ident\n\t:ifier 1\n\t\t0)\n(:FunctionCall\n\t1000)";
+        const test_token_kinds = [_]Token.Kind{.lparen, .identifier, .identifier, .{.number = 1}, .{.number = 0}, .rparen,
+            .lparen, .identifier, .{.number = 1000}, .rparen};
+        const test_string_reprs = [_][]const u8{"(", ":ident", ":ifier", "1", "0", ")", "(", ":FunctionCall", "1000", ")"};
+        var tokenizer: Tokenizer = .init(&test_string);
+        var i: u32 = 0;
+        while (true) : (i += 1) {
+            const token = try tokenizer.next() orelse {
+                // std.debug.print("EOF found\n", .{});
+                break;
+            };
+            // {
+            //     std.debug.print("Current index: {d}, current token: {any}\n", .{i, token});
+            //     std.debug.print("String representation: {s}\n", .{test_string[token.start..token.end]});
+            // }
+            try std.testing.expectEqual(test_token_kinds[i], token.kind);
+            try std.testing.expectEqualStrings(test_string[token.start..token.end], test_string_reprs[i]);
+        }
+    }
+    // Weird looking but still technically correct testing
+    {
+        var test_string: []const u8 = "(                 1000           )\n(:awa50owo)";
+        const test_token_kinds = [_]Token.Kind{.lparen, .{.number = 1000}, .rparen, .lparen, .identifier, .rparen};
+        const test_string_reprs = [_][]const u8{"(", "1000", ")", "(", ":awa50owo", ")"};
+        var tokenizer: Tokenizer = .init(&test_string);
+        var i: u32 = 0;
+        while (true) : (i += 1) {
+            const token = try tokenizer.next() orelse {
+                // std.debug.print("EOF found\n", .{});
+                break;
+            };
+            // {
+            //     std.debug.print("Current index: {d}, current token: {any}\n", .{i, token});
+            //     std.debug.print("String representation: {s}\n", .{test_string[token.start..token.end]});
+            // }
+            try std.testing.expectEqual(test_token_kinds[i], token.kind);
+            try std.testing.expectEqualStrings(test_string_reprs[i], test_string[token.start..token.end]);
+        }
+    }
+}
+
+/// Make a list expression.
+/// If `initial_expressions` is not null, each item is added
+pub fn make_list_expr(initial_expressions: ?[]const *ExprValue, allocator: std.mem.Allocator) !*ExprValue {
+    var expr = try allocator.create(ExprValue);
+    expr.* = ExprValue{ .lst = try std.ArrayList(*ExprValue).initCapacity(allocator, 0) };
+    if (initial_expressions) |expressions| {
+        for (expressions) |e| {
+            try expr.lst.append(allocator, e);
+        }
+    }
+    return expr;
+}
+
+pub const Parser = struct {
+    source: Source,
+    curr: *ExprValue = undefined,
+    allocator: std.mem.Allocator,
+    list_stack: std.ArrayList(*ExprValue),
+
+    pub fn init(source: Source, allocator: std.mem.Allocator) !Parser {
+        return .{
+            .source = source,
+            .allocator = allocator,
+            .list_stack = try std.ArrayList(*ExprValue).initCapacity(allocator, 8)
+        };
+    }
+
+    pub fn deinit(self: *Parser) void {
+        for (self.curr.lst.items) |e| {
+            e.deinit(self.allocator);
+        }
+        // for (self.list_stack.items) |e| {
+        //     e.deinit(self.allocator);
+        // }
+        self.list_stack.deinit(self.allocator);
+    }
+
+    pub fn parse(self: *Parser) !std.ArrayList(*ExprValue) {
+        self.curr = try make_list_expr(null, self.allocator);
+        // try self.list_stack.append(self.allocator, self.curr);
+        var tokenizer: Tokenizer = .init(&self.source);
+        while (try tokenizer.next()) |token| {
+            switch (token.kind) {
+                .lparen => {
+                    try self.list_stack.append(self.allocator, self.curr);
+                    self.curr = try make_list_expr(null, self.allocator);
+                },
+                .rparen => {
+                    if (self.list_stack.items.len == 0) {
+                        return error.TooManyRparens;
+                    }
+                    const completed_list = self.curr;
+                    self.curr = self.list_stack.pop().?;
+                    std.debug.assert(self.curr.* == .lst);
+                    try self.curr.lst.append(self.allocator, completed_list);
+                },
+                .identifier => {
+                    const expr = try self.allocator.create(ExprValue);
+                    expr.* = ExprValue{.iden = .{.start = token.start, .end = token.end}};
+                    try self.curr.lst.append(self.allocator, expr);
+                },
+                .string => {},
+                .number => |num| {_ = num;},
+            }
+        }
+        return self.curr.lst;
+    }
+};
+
+pub const ExprValue = union(enum) {
+    num: u64, // Might not implement
+    str: struct {start: u32, end: u32}, // Might not implement
+    iden: struct {start: u32, end: u32},
+    lst: std.ArrayList(*ExprValue),
+
+    pub fn deinit(self: *ExprValue, allocator: std.mem.Allocator) void {
+        if (std.meta.activeTag(self.*) == .lst) {
+            for (self.lst.items) |e| {
+                e.deinit(allocator);
+            }
+            self.lst.deinit(allocator);
+        }
+        allocator.destroy(self);
+    }
+};
+
+test "Parser" {
+    const allocator = std.testing.allocator;
+    const test_string_1 = "(:function :arg1 :arg2)";
+    var parser = try Parser.init(test_string_1, allocator);
+    const parsed_result = try parser.parse();
+    defer parser.deinit();
+
+    try std.testing.expectEqualDeep(
+        1,
+        parsed_result.items.len
+    );
+
+    try std.testing.expectEqualDeep(":function",
+        test_string_1[parsed_result.items[0].lst.items[0].iden.start..parsed_result.items[0].lst.items[0].iden.end]
+    );
+
+    try std.testing.expectEqualDeep(":arg1",
+        test_string_1[parsed_result.items[0].lst.items[1].iden.start..parsed_result.items[0].lst.items[1].iden.end]
+    );
+
+    try std.testing.expectEqualDeep(":arg2",
+        test_string_1[parsed_result.items[0].lst.items[2].iden.start..parsed_result.items[0].lst.items[2].iden.end]
+    );
 }
