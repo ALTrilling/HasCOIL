@@ -16,10 +16,9 @@ pub const Token = struct {
     };
 };
 
-
 pub fn slice_get(slice: anytype, index: usize) ?(switch (@typeInfo(@typeInfo(@TypeOf(slice)).pointer.child)) {
     .pointer => |contained| contained.child,
-    else => @typeInfo(@TypeOf(slice)).pointer.child
+    else => @typeInfo(@TypeOf(slice)).pointer.child,
 }) {
     switch (@typeInfo(@typeInfo(@TypeOf(slice)).pointer.child)) {
         .pointer => {
@@ -56,9 +55,7 @@ pub const Tokenizer = struct {
     index: u32 = 0,
 
     pub fn init(source: *Source) Tokenizer {
-        return .{
-            .source = source
-        };
+        return .{ .source = source };
     }
 
     fn next(self: *Tokenizer) !?Token {
@@ -67,28 +64,36 @@ pub const Tokenizer = struct {
         //         if (val) |val_safe| {return val_safe;} else {return null;}
         //     }
         // }.f;
-        while ((slice_get(self.source, self.index) orelse {return null;}) == ' ' or (slice_get(self.source, self.index) orelse {return null;}) == '\t' or (slice_get(self.source, self.index) orelse {return null;}) == '\r' or (slice_get(self.source, self.index) orelse {return null;}) == '\n') {
+        while ((slice_get(self.source, self.index) orelse {
+            return null;
+        }) == ' ' or (slice_get(self.source, self.index) orelse {
+            return null;
+        }) == '\t' or (slice_get(self.source, self.index) orelse {
+            return null;
+        }) == '\r' or (slice_get(self.source, self.index) orelse {
+            return null;
+        }) == '\n') {
             self.index += 1;
         }
 
         const start_index = self.index;
-        return switch(slice_get(self.source, start_index).?) {
+        return switch (slice_get(self.source, start_index).?) {
             '(' => blk: {
-                    self.index += 1;
-                    break :blk Token {
-                        .start = start_index,
-                        .end = start_index + 1,
-                        .kind = Token.Kind.lparen,
-                    };
-                },
+                self.index += 1;
+                break :blk Token{
+                    .start = start_index,
+                    .end = start_index + 1,
+                    .kind = Token.Kind.lparen,
+                };
+            },
             ')' => blk: {
-                    self.index += 1;
-                    break :blk Token {
-                        .start = start_index,
-                        .end = start_index + 1,
-                        .kind = Token.Kind.rparen,
-                    };
-                },
+                self.index += 1;
+                break :blk Token{
+                    .start = start_index,
+                    .end = start_index + 1,
+                    .kind = Token.Kind.rparen,
+                };
+            },
             '"' => blk: {
                 self.index += 1;
                 var next_escaped = false;
@@ -99,42 +104,42 @@ pub const Tokenizer = struct {
                     if (slice_get(self.source, self.index - 1).? == '\\') next_escaped = true;
                 }
                 self.index += 1;
-                break :blk Token {
+                break :blk Token{
                     .start = start_index,
                     .end = self.index,
                     .kind = Token.Kind.string,
                 };
             },
             '0'...'9' => blk: {
-                while('0' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '9') {
+                while ('0' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '9') {
                     self.index += 1;
                 }
 
-                break :blk Token {
+                break :blk Token{
                     .start = start_index,
                     .end = self.index,
-                    .kind = .{.number =
-                        std.fmt.parseInt(u64, self.source.*[start_index..self.index], 10) catch {return error.InvalidIntLiteral;}
-                    },
+                    .kind = .{ .number = std.fmt.parseInt(u64, self.source.*[start_index..self.index], 10) catch {
+                        return error.InvalidIntLiteral;
+                    } },
                 };
             },
             ':' => blk: {
                 self.index += 1;
-                while((('a' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'z'))
+                while ((('a' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'z'))
                     or (('A' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'Z'))
                     or (('0' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '9'))
+                    // or (('!' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '/'))
                     or slice_get(self.source, self.index).? == '_') {
                     self.index += 1;
                 }
 
-                break :blk Token {
+                break :blk Token{
                     .start = start_index,
                     .end = self.index,
                     .kind = Token.Kind.identifier,
                 };
-
             },
-            else => error.UnknownSymbol
+            else => error.UnknownSymbol,
         };
     }
 };
@@ -153,8 +158,8 @@ test "Tokenizer" {
     // }
     {
         var test_string: []const u8 = "(:identifier 10 (\"string\" \"test_with_\\\"escape\\\"\"))";
-        const test_token_kinds = [_]Token.Kind{.lparen, .identifier, .{.number = 10}, .lparen, .string, .string, .rparen, .rparen};
-        const test_string_reprs = [_][]const u8{"(", ":identifier", "10", "(", "\"string\"", "\"test_with_\\\"escape\\\"\"", ")", ")"};
+        const test_token_kinds = [_]Token.Kind{ .lparen, .identifier, .{ .number = 10 }, .lparen, .string, .string, .rparen, .rparen };
+        const test_string_reprs = [_][]const u8{ "(", ":identifier", "10", "(", "\"string\"", "\"test_with_\\\"escape\\\"\"", ")", ")" };
         var tokenizer: Tokenizer = .init(&test_string);
         var i: u32 = 0;
         while (true) : (i += 1) {
@@ -173,9 +178,8 @@ test "Tokenizer" {
     // Multi-line testing
     {
         var test_string: []const u8 = "(:ident\n\t:ifier 1\n\t\t0)\n(:FunctionCall\n\t1000)";
-        const test_token_kinds = [_]Token.Kind{.lparen, .identifier, .identifier, .{.number = 1}, .{.number = 0}, .rparen,
-            .lparen, .identifier, .{.number = 1000}, .rparen};
-        const test_string_reprs = [_][]const u8{"(", ":ident", ":ifier", "1", "0", ")", "(", ":FunctionCall", "1000", ")"};
+        const test_token_kinds = [_]Token.Kind{ .lparen, .identifier, .identifier, .{ .number = 1 }, .{ .number = 0 }, .rparen, .lparen, .identifier, .{ .number = 1000 }, .rparen };
+        const test_string_reprs = [_][]const u8{ "(", ":ident", ":ifier", "1", "0", ")", "(", ":FunctionCall", "1000", ")" };
         var tokenizer: Tokenizer = .init(&test_string);
         var i: u32 = 0;
         while (true) : (i += 1) {
@@ -194,8 +198,8 @@ test "Tokenizer" {
     // Weird looking but still technically correct testing
     {
         var test_string: []const u8 = "(                 1000           )\n(:awa50owo)";
-        const test_token_kinds = [_]Token.Kind{.lparen, .{.number = 1000}, .rparen, .lparen, .identifier, .rparen};
-        const test_string_reprs = [_][]const u8{"(", "1000", ")", "(", ":awa50owo", ")"};
+        const test_token_kinds = [_]Token.Kind{ .lparen, .{ .number = 1000 }, .rparen, .lparen, .identifier, .rparen };
+        const test_string_reprs = [_][]const u8{ "(", "1000", ")", "(", ":awa50owo", ")" };
         var tokenizer: Tokenizer = .init(&test_string);
         var i: u32 = 0;
         while (true) : (i += 1) {
@@ -233,20 +237,18 @@ pub const Parser = struct {
     list_stack: std.ArrayList(*ExprValue),
 
     pub fn init(source: Source, allocator: std.mem.Allocator) !Parser {
-        return .{
-            .source = source,
-            .allocator = allocator,
-            .list_stack = try std.ArrayList(*ExprValue).initCapacity(allocator, 8)
-        };
+        return .{ .source = source, .allocator = allocator, .list_stack = try std.ArrayList(*ExprValue).initCapacity(allocator, 8) };
     }
 
     pub fn deinit(self: *Parser) void {
         for (self.curr.lst.items) |e| {
             e.deinit(self.allocator);
         }
-        // for (self.list_stack.items) |e| {
-        //     e.deinit(self.allocator);
-        // }
+        self.curr.lst.deinit(self.allocator);
+        self.allocator.destroy(self.curr);
+        for (self.list_stack.items) |e| {
+            e.deinit(self.allocator);
+        }
         self.list_stack.deinit(self.allocator);
     }
 
@@ -271,11 +273,13 @@ pub const Parser = struct {
                 },
                 .identifier => {
                     const expr = try self.allocator.create(ExprValue);
-                    expr.* = ExprValue{.iden = .{.start = token.start, .end = token.end}};
+                    expr.* = ExprValue{ .iden = .{ .start = token.start, .end = token.end } };
                     try self.curr.lst.append(self.allocator, expr);
                 },
                 .string => {},
-                .number => |num| {_ = num;},
+                .number => |num| {
+                    _ = num;
+                },
             }
         }
         return self.curr.lst;
@@ -284,8 +288,8 @@ pub const Parser = struct {
 
 pub const ExprValue = union(enum) {
     num: u64, // Might not implement
-    str: struct {start: u32, end: u32}, // Might not implement
-    iden: struct {start: u32, end: u32},
+    str: struct { start: u32, end: u32 }, // Might not implement
+    iden: struct { start: u32, end: u32 },
     lst: std.ArrayList(*ExprValue),
 
     pub fn deinit(self: *ExprValue, allocator: std.mem.Allocator) void {
@@ -297,29 +301,112 @@ pub const ExprValue = union(enum) {
         }
         allocator.destroy(self);
     }
+
+    pub fn format(
+        self: ExprValue,
+        source: []const u8,
+        writer: *std.Io.Writer,
+        max_chars: u32,
+    ) !void {
+        var char_count: u32 = 0;
+        try self.internal_format(0, source, writer, &char_count, max_chars);
+        try writer.writeByte('\n');
+    }
+
+    fn internal_format(self: ExprValue, indenting: u32, source: []const u8, writer: *std.Io.Writer, char_count: *u32, max_chars: u32) !void {
+        switch (self) {
+            .num => { try writer.print("{d}", .{self.num}); },
+            .str => { _ = try writer.write(source[self.str.start..self.str.end]); },
+            .iden => {
+                const iden_length = self.iden.end - self.iden.start;
+                if (char_count.* + iden_length > max_chars) {
+                    try writer.writeByte('\n');
+                    for(0..indenting*2) |_| {
+                        try writer.writeByte(' ');
+                    }
+                    char_count.* = 0;
+                }
+                _ = try writer.write(source[self.iden.start..self.iden.end]);
+                char_count.* = char_count.* + iden_length;
+            },
+            .lst => {
+                // try writer.writeByte('\n');
+                // for(0..indenting) |_| {
+                //     try writer.writeByte('\t');
+                // }
+
+                try writer.writeByte('(');
+                // try writer.writeByte('\n');
+                // for(0..indenting+1) |_| {
+                //     try writer.writeByte('\t');
+                // }
+                for (self.lst.items, 0..) |e, i| {
+                    try e.internal_format(indenting + 1, source, writer, char_count, max_chars);
+                    if (i != self.lst.items.len - 1) {
+                        try writer.writeByte(' ');
+                        char_count.* += 1;
+                    }
+                }
+
+                // try writer.writeByte('\n');
+                // for(0..indenting*2) |_| {
+                //     try writer.writeByte(' ');
+                // }
+
+                _ = try writer.write(")");
+            }
+        }
+    }
 };
+
+const InspectExprIdent = struct {
+    fn f(test_string: *const []const u8, parsed_result: std.ArrayList(*ExprValue), path: anytype) callconv(.@"inline") []const u8 {
+        if (@typeInfo(@TypeOf(path)) != .@"struct") {
+            @compileError("Must pass in a tuple");
+        }
+        var curr: *ExprValue = parsed_result.items[@field(path, std.meta.fields(@TypeOf(path))[0].name)];
+        inline for (std.meta.fields(@TypeOf(path))[1..]) |field| {
+            curr = curr.lst.items[@field(path, field.name)];
+        }
+        return test_string.*[curr.iden.start..curr.iden.end];
+    }
+}.f;
 
 test "Parser" {
     const allocator = std.testing.allocator;
-    const test_string_1 = "(:function :arg1 :arg2)";
-    var parser = try Parser.init(test_string_1, allocator);
-    const parsed_result = try parser.parse();
-    defer parser.deinit();
+    {
+        const test_string: []const u8 = "(:function :arg1 :arg2)";
+        var parser = try Parser.init(test_string, allocator);
+        const parsed_result = try parser.parse();
+        defer parser.deinit();
 
-    try std.testing.expectEqualDeep(
-        1,
-        parsed_result.items.len
-    );
+        try std.testing.expectEqualDeep(1, parsed_result.items.len);
 
-    try std.testing.expectEqualDeep(":function",
-        test_string_1[parsed_result.items[0].lst.items[0].iden.start..parsed_result.items[0].lst.items[0].iden.end]
-    );
+        // try std.testing.expectEqualDeep(":function", test_string_1[parsed_result.items[0].lst.items[0].iden.start..parsed_result.items[0].lst.items[0].iden.end]);
+        try std.testing.expectEqualDeep(":function", InspectExprIdent(&test_string, parsed_result, .{0, 0}));
 
-    try std.testing.expectEqualDeep(":arg1",
-        test_string_1[parsed_result.items[0].lst.items[1].iden.start..parsed_result.items[0].lst.items[1].iden.end]
-    );
+        // try std.testing.expectEqualDeep(":arg1", test_string[parsed_result.items[0].lst.items[1].iden.start..parsed_result.items[0].lst.items[1].iden.end]);
+        try std.testing.expectEqualDeep(":arg1", InspectExprIdent(&test_string, parsed_result, .{0, 1}));
 
-    try std.testing.expectEqualDeep(":arg2",
-        test_string_1[parsed_result.items[0].lst.items[2].iden.start..parsed_result.items[0].lst.items[2].iden.end]
-    );
+        // try std.testing.expectEqualDeep(":arg2", test_string[parsed_result.items[0].lst.items[2].iden.start..parsed_result.items[0].lst.items[2].iden.end]);
+        try std.testing.expectEqualDeep(":arg2", InspectExprIdent(&test_string, parsed_result, .{0, 2}));
+    }
+
+    {
+        const test_string: []const u8 = "(:function1 :x (:function2 :z :w) :y)\n\t(:function3 :a)";
+        var parser = try Parser.init(test_string, allocator);
+        const parsed_result = try parser.parse();
+        defer parser.deinit();
+
+        try std.testing.expectEqual(2, parsed_result.items.len);
+        try std.testing.expectEqualStrings(":function1", InspectExprIdent(&test_string, parsed_result, .{0, 0}));
+        try std.testing.expectEqualStrings(":x", InspectExprIdent(&test_string, parsed_result, .{0, 1}));
+        try std.testing.expectEqualStrings(":function2", InspectExprIdent(&test_string, parsed_result, .{0, 2, 0}));
+        try std.testing.expectEqualStrings(":z", InspectExprIdent(&test_string, parsed_result, .{0, 2, 1}));
+        try std.testing.expectEqualStrings(":w", InspectExprIdent(&test_string, parsed_result, .{0, 2, 2}));
+        try std.testing.expectEqualStrings(":y", InspectExprIdent(&test_string, parsed_result, .{0, 3}));
+        try std.testing.expectEqualStrings(":function3", InspectExprIdent(&test_string, parsed_result, .{1, 0}));
+        try std.testing.expectEqualStrings(":a", InspectExprIdent(&test_string, parsed_result, .{1, 1}));
+    }
 }
+

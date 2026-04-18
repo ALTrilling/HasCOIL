@@ -181,29 +181,17 @@ From https://github.com/HigherOrderCO/HVM2/blob/73da3bbc4b222fb8f044fcc5dad202e9
   2 : y
 )
 
-; (Cons (+ 1 1) (Cons (+ 2 2) (Cons (+ 3 3) Nil)))
 
+```clj
+(:book 
 
-
-(:main
-  
+    ; [(Fst (Pair x y)) :> x]
+    (:include "./book/*")
 )
-```
 
-<!---->
-<!-- ```clj -->
-<!-- (:book  -->
-<!---->
-<!--     ; [(Fst (Pair x y)) :> x] -->
-<!--     (:include "./book/*") -->
-<!-- ) -->
-<!---->
-<!---->
-<!-- (BODY) -->
-<!-- (dup {a b} 67) -->
-<!---->
-<!-- (Cons (+ 1 1) (Cons (+ 2 2) (Cons (+ 3 3) Nil))) -->
-<!-- ``` -->
-<!---->
-Scott encodings make brain happy
+(BODY)
+(dup {a b} 67)
+
+(Cons (+ 1 1) (Cons (+ 2 2) (Cons (+ 3 3) Nil)))
+```
 
