@@ -123,7 +123,7 @@ pub const Tokenizer = struct {
                     } },
                 };
             },
-            ':' => blk: {
+            _ => blk: {
                 self.index += 1;
                 while ((('a' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'z'))
                     or (('A' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'Z'))
