@@ -425,18 +425,32 @@ pub fn ast_to_graph(source: *Source, ast: std.ArrayList(*ExprValue), allocator: 
     var book: eval.Book = try .init(allocator, &[_]eval.Rdx{}, &[_]void{}, allocator);
     const new: eval.GraphStateContainer = .init(&book);
     for (ast.items) |expr| {
-        graphify(source, expr, new);
+        graphify(source, expr, new); // Each unique top level expression will generate a disjoint graph
     }
 }
 
 // Graphify meaning "turn into a graph"
-pub fn graphify(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Term, u32 } {
+pub fn graphify(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Term, eval.Pos.Var } {
     if (expr == .lst and expr.lst.items[0] == .iden) {
         const iden_val = source.*[expr.lst.items[0].iden.start..expr.lst.items[0].iden.end];
         if (std.mem.eql(u8, iden_val, "@") or std.mem.eql(u8, iden_val, ":apply")) {
             return graphify_application_sexpr(source, expr, new);
         } else if (std.mem.eql(u8, iden_val, "/") or std.mem.eql(u8, iden_val, ":lambda")) {
-            return graphify_abstraction_sexpr(source, expr, new);
+            return graphify_abstraction_sexpr(source, expr, new)[0];
+        } else if (std.mem.eql(u8, iden_val, ":sup")) {
+            return graphify_sup_sexpr(source, expr, new);
+        } else {
+            return error.unknownNodeConstructorName;
+        }
+    } else {
+        return error.mustStartWithNodeDefSExpr;
+    }
+}
+pub fn graphify_pos(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Pos, eval.Neg.Sub } {
+    if (expr == .lst and expr.lst.items[0] == .iden) {
+        const iden_val = source.*[expr.lst.items[0].iden.start..expr.lst.items[0].iden.end];
+        if (std.mem.eql(u8, iden_val, "/") or std.mem.eql(u8, iden_val, ":lambda")) {
+            return graphify_abstraction_sexpr(source, expr, new)[0];
         } else if (std.mem.eql(u8, iden_val, ":sup")) {
             return graphify_sup_sexpr(source, expr, new);
         } else {
@@ -447,13 +461,24 @@ pub fn graphify(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer
     }
 }
 
-// Returns the combinator and the outgoing port id ()
-pub fn graphify_application_sexpr(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{eval.Pos.Lam, eval.Pos.Var} {
-    const argument_index = next_index();
-    const return_index = next_index();
-    const application = try new.App(new.Sub(argument_index), new.Var(return_index));
-    const argument = graphify(source, expr.lst[2], new);
-    const function = graphify(source, expr.lst[1], new);
-    try new.Redex(function, application);
+pub fn graphify_neg(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Neg, eval.Pos.Var } {
+    @panic("");
 }
-// TODO: need a stack of variable name to sub values
+
+// Returns the node and the outgoing return id ()
+pub fn graphify_application_sexpr(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{eval.Pos.Lam, eval.Neg.Sub } {
+    const function = graphify_pos(source, expr.lst[1], new);
+    const argument = graphify(source, expr.lst[2], new);
+    const argument_result = argument[1];
+
+    const return_index = next_index();
+    const application = try new.App(argument_result, new.Var(return_index));
+
+    try .{new.Redex(function, application), return_index};
+}
+
+pub fn graphify_abstraction_sexpr(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{eval.Pos.Lam, eval.Neg.Sub } {
+    const bnd = new.Sub(0);
+    const bod = graphify_neg(expr.lst[2]);
+    const abstraction = try new.Lam(bnd, bod); // bnd
+}

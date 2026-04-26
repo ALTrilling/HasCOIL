@@ -17,7 +17,8 @@ pub const Subs = std.AutoHashMap(Name, *Neg);
 
 pub const Pos = union(enum) {
     // Variable
-    Var: struct { nam: Name },
+    Var: struct { nam: Name
+},
     // Delete information (basically an eraser node afaict, just with reversed polarity)
     Nil: struct {},
     // Lambda
@@ -49,7 +50,7 @@ pub const Pos = union(enum) {
 
 pub const Neg = union(enum) {
     // Substitution. Inverse of variable
-    Sub: struct { nam: Name },
+    Sub: struct { nam: Name},
     // Delete information
     Era: struct {},
     // Application. Inverse of lambda.
@@ -348,6 +349,14 @@ pub const GraphStateContainer = struct {
         const app = try self.allocator.create(Pos);
         app.* = .{ .Var = .{ .nam = nam } };
         return app;
+    }
+
+    pub fn InvertSub(self: *Neg.Sub) Pos.Var {
+        return Pos.Var { .name = self.nam };
+    }
+
+    pub fn InvertVar(self: *Pos.Var) Neg.Sub {
+        return Var.Sub { .name = self.nam };
     }
 };
 
