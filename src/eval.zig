@@ -17,7 +17,8 @@ pub const Subs = std.AutoHashMap(Name, *Neg);
 
 pub const Pos = union(enum) {
     // Variable
-    Var: struct { nam: Name },
+    Var: struct { nam: Name
+},
     // Delete information (basically an eraser node afaict, just with reversed polarity)
     Nil: struct {},
     // Lambda
@@ -49,7 +50,7 @@ pub const Pos = union(enum) {
 
 pub const Neg = union(enum) {
     // Substitution. Inverse of variable
-    Sub: struct { nam: Name },
+    Sub: struct { nam: Name},
     // Delete information
     Era: struct {},
     // Application. Inverse of lambda.
@@ -182,66 +183,6 @@ pub fn show(term: Term, vars: *Vars, subs: *Subs, alloc: std.mem.Allocator, comp
 //
 
 pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocator) !void {
-    var new = struct {
-        allocator: std.mem.Allocator,
-        book: *Book,
-
-        pub const Self = @This();
-
-        pub fn init(alloc: std.mem.Allocator, book_internal: *Book) Self {
-            return .{
-                .allocator = alloc,
-                .book = book_internal,
-            };
-        }
-
-        pub fn Redex(self: *Self, content: anytype) !void {
-            try self.book.put(self.allocator, .{ .neg = content.@"0", .pos = content.@"1" }, {});
-        }
-        pub fn App(self: *const Self, arg: *Pos, ret: *Neg) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .App = .{
-                .arg = arg,
-                .ret = ret,
-            } };
-            return app;
-        }
-        pub fn Dup(self: *const Self, dp0: *Neg, dp1: *Neg) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .Dup = .{
-                .dp0 = dp0,
-                .dp1 = dp1,
-            } };
-            return app;
-        }
-        pub fn Era(self: *const Self) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .Era = .{} };
-            return app;
-        }
-
-        pub fn Lam(self: *const Self, bnd: *Neg, bod: *Pos) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Lam = .{
-                .bnd = bnd,
-                .bod = bod,
-            } };
-            return app;
-        }
-        pub fn Sup(self: *const Self, sp0: *Pos, sp1: *Pos) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Sup = .{
-                .sp0 = sp0,
-                .sp1 = sp1,
-            } };
-            return app;
-        }
-        pub fn Nil(self: *const Self) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Nil = .{} };
-            return app;
-        }
-    }.init(allocator, book);
     while (book.pop()) |redex_kv| {
         const redex = redex_kv.key;
         const pre_reduce_neg = try show(.{ .Neg = redex.neg }, vars, subs, allocator, true);
@@ -330,7 +271,7 @@ pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocato
                         try new.Redex(.{ neg_dup.dp1, try new.Lam(wire3.@"0", wire4.@"1") });
                         try new.Redex(.{ lam_bnd, try new.Sup(wire1.@"1", wire3.@"1") });
                         redex.neg.* = .{ .Dup = .{ .dp0 = wire2.@"0", .dp1 = wire4.@"0" } };
-                        try new.Redex(.{ redex.neg, lam_bod });
+                  std.mem.eql(u8,      try new.Redex(.{ redex.neg, lam_bod });
                     },
                     .Sup => |pos_sup| {
                         try new.Redex(.{ neg_dup.dp0, pos_sup.sp0 });
@@ -345,83 +286,92 @@ pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocato
     }
 }
 
+pub const GraphStateContainer = struct {
+    allocator: std.mem.Allocator,
+    book: *Book,
+
+    pub const Self = @This();
+
+    pub fn init(book: *Book, allocator: std.mem.Allocator) Self {
+        return .{
+            .allocator = allocator,
+            .book = book,
+        };
+    }
+
+    pub fn Redex(self: *Self, content: anytype) !void {
+        try self.book.put(self.allocator, .{ .neg = content.@"0", .pos = content.@"1" }, {});
+    }
+    pub fn App(self: *const Self, arg: *Pos, ret: *Neg) !*Neg {
+        const app = try self.allocator.create(Neg);
+        app.* = .{ .App = .{
+            .arg = arg,
+            .ret = ret,
+        } };
+        return app;
+    }
+    pub fn Dup(self: *const Self, dp0: *Neg, dp1: *Neg) !*Neg {
+        const app = try self.allocator.create(Neg);
+        app.* = .{ .Dup = .{
+            .dp0 = dp0,
+            .dp1 = dp1,
+        } };
+        return app;
+    }
+    pub fn Era(self: *const Self) !*Neg {
+        const app = try self.allocator.create(Neg);
+        app.* = .{ .Era = .{} };
+        return app;
+    }
+    pub fn Sub(self: *const Self, nam: u32) !*Neg {
+        const app = try self.allocator.create(Neg);
+        app.* = .{ .Sub = .{ .nam = nam } };
+        return app;
+    }
+
+    pub fn Lam(self: *const Self, bnd: *Neg, bod: *Pos) !*Pos {
+        const app = try self.allocator.create(Pos);
+        app.* = .{ .Lam = .{
+            .bnd = bnd,
+            .bod = bod,
+        } };
+        return app;
+    }
+    pub fn Sup(self: *const Self, sp0: *Pos, sp1: *Pos) !*Pos {
+        const app = try self.allocator.create(Pos);
+        app.* = .{ .Sup = .{
+            .sp0 = sp0,
+            .sp1 = sp1,
+        } };
+        return app;
+    }
+    pub fn Nil(self: *const Self) !*Pos {
+        const app = try self.allocator.create(Pos);
+        app.* = .{ .Nil = .{} };
+        return app;
+    }
+    pub fn Var(self: *const Self, nam: u32) !*Pos {
+        const app = try self.allocator.create(Pos);
+        app.* = .{ .Var = .{ .nam = nam } };
+        return app;
+    }
+
+    pub fn InvertSub(self: *Neg.Sub) Pos.Var {
+        return Pos.Var { .name = self.nam };
+    }
+
+    pub fn InvertVar(self: *Pos.Var) Neg.Sub {
+        return Var.Sub { .name = self.nam };
+    }
+};
+
 test "Basic reductions" {
     const allocator = std.testing.allocator;
-    const New = struct {
-        allocator: std.mem.Allocator,
-        book: *Book,
-
-        pub const Self = @This();
-
-        pub fn init(book: *Book) Self {
-            return .{
-                .allocator = allocator,
-                .book = book,
-            };
-        }
-
-        pub fn Redex(self: *Self, content: anytype) !void {
-            try self.book.put(self.allocator, .{ .neg = content.@"0", .pos = content.@"1" }, {});
-        }
-        pub fn App(self: *const Self, arg: *Pos, ret: *Neg) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .App = .{
-                .arg = arg,
-                .ret = ret,
-            } };
-            return app;
-        }
-        pub fn Dup(self: *const Self, dp0: *Neg, dp1: *Neg) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .Dup = .{
-                .dp0 = dp0,
-                .dp1 = dp1,
-            } };
-            return app;
-        }
-        pub fn Era(self: *const Self) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .Era = .{} };
-            return app;
-        }
-        pub fn Sub(self: *const Self, nam: u32) !*Neg {
-            const app = try self.allocator.create(Neg);
-            app.* = .{ .Sub = .{ .nam = nam } };
-            return app;
-        }
-
-        pub fn Lam(self: *const Self, bnd: *Neg, bod: *Pos) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Lam = .{
-                .bnd = bnd,
-                .bod = bod,
-            } };
-            return app;
-        }
-        pub fn Sup(self: *const Self, sp0: *Pos, sp1: *Pos) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Sup = .{
-                .sp0 = sp0,
-                .sp1 = sp1,
-            } };
-            return app;
-        }
-        pub fn Nil(self: *const Self) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Nil = .{} };
-            return app;
-        }
-        pub fn Var(self: *const Self, nam: u32) !*Pos {
-            const app = try self.allocator.create(Pos);
-            app.* = .{ .Var = .{ .nam = nam } };
-            return app;
-        }
-    };
     {
         var subs: Subs = .init(allocator);
         var vars: Vars = .init(allocator);
-        var book: Book = try .init(allocator, &[_]Rdx{}, &[_]void{});
-        var new: New = .init(&book);
+        var book: Book = try .init(allocator, &[_]Rdx{}, &[_]void{}, allocator);
+        var new: GraphStateContainer = .init(&book);
         // const rhs_lambda = try new.Lam(try new.Dup(try new.Sub(500), try new.App(try new.Var(500), try new.Sub(501))), try new.Var(501));
         // const lhs_application = try new.App(try new.Lam(try new.Sub(502), try new.Var(502)), try new.Sub(503));
         // const root: Term = .{ .Pos = try new.Var(503) };

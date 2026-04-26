@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const Source = []const u8;
+const eval = @import("eval.zig");
 
 pub const Token = struct {
     start: u32,
@@ -123,13 +124,11 @@ pub const Tokenizer = struct {
                     } },
                 };
             },
-            _ => blk: {
+            else => blk: {
                 self.index += 1;
-                while ((('a' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'z'))
-                    or (('A' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= 'Z'))
-                    or (('0' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '9'))
-                    // or (('!' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '/'))
-                    or slice_get(self.source, self.index).? == '_') {
+                // use `man ascii` to view the character range
+                // Only following printing ascii characters are not permitted ! " # $ % & ' ( )
+                while (('*' <= slice_get(self.source, self.index).? and slice_get(self.source, self.index).? <= '~')) {
                     self.index += 1;
                 }
 
@@ -139,7 +138,6 @@ pub const Tokenizer = struct {
                     .kind = Token.Kind.identifier,
                 };
             },
-            else => error.UnknownSymbol,
         };
     }
 };
@@ -315,13 +313,17 @@ pub const ExprValue = union(enum) {
 
     fn internal_format(self: ExprValue, indenting: u32, source: []const u8, writer: *std.Io.Writer, char_count: *u32, max_chars: u32) !void {
         switch (self) {
-            .num => { try writer.print("{d}", .{self.num}); },
-            .str => { _ = try writer.write(source[self.str.start..self.str.end]); },
+            .num => {
+                try writer.print("{d}", .{self.num});
+            },
+            .str => {
+                _ = try writer.write(source[self.str.start..self.str.end]);
+            },
             .iden => {
                 const iden_length = self.iden.end - self.iden.start;
                 if (char_count.* + iden_length > max_chars) {
                     try writer.writeByte('\n');
-                    for(0..indenting*2) |_| {
+                    for (0..indenting * 2) |_| {
                         try writer.writeByte(' ');
                     }
                     char_count.* = 0;
@@ -354,13 +356,13 @@ pub const ExprValue = union(enum) {
                 // }
 
                 _ = try writer.write(")");
-            }
+            },
         }
     }
 };
 
 const InspectExprIdent = struct {
-    fn f(test_string: *const []const u8, parsed_result: std.ArrayList(*ExprValue), path: anytype) callconv(.@"inline") []const u8 {
+    inline fn f(test_string: *const []const u8, parsed_result: std.ArrayList(*ExprValue), path: anytype) []const u8 {
         if (@typeInfo(@TypeOf(path)) != .@"struct") {
             @compileError("Must pass in a tuple");
         }
@@ -383,13 +385,13 @@ test "Parser" {
         try std.testing.expectEqualDeep(1, parsed_result.items.len);
 
         // try std.testing.expectEqualDeep(":function", test_string_1[parsed_result.items[0].lst.items[0].iden.start..parsed_result.items[0].lst.items[0].iden.end]);
-        try std.testing.expectEqualDeep(":function", InspectExprIdent(&test_string, parsed_result, .{0, 0}));
+        try std.testing.expectEqualDeep(":function", InspectExprIdent(&test_string, parsed_result, .{ 0, 0 }));
 
         // try std.testing.expectEqualDeep(":arg1", test_string[parsed_result.items[0].lst.items[1].iden.start..parsed_result.items[0].lst.items[1].iden.end]);
-        try std.testing.expectEqualDeep(":arg1", InspectExprIdent(&test_string, parsed_result, .{0, 1}));
+        try std.testing.expectEqualDeep(":arg1", InspectExprIdent(&test_string, parsed_result, .{ 0, 1 }));
 
         // try std.testing.expectEqualDeep(":arg2", test_string[parsed_result.items[0].lst.items[2].iden.start..parsed_result.items[0].lst.items[2].iden.end]);
-        try std.testing.expectEqualDeep(":arg2", InspectExprIdent(&test_string, parsed_result, .{0, 2}));
+        try std.testing.expectEqualDeep(":arg2", InspectExprIdent(&test_string, parsed_result, .{ 0, 2 }));
     }
 
     {
@@ -399,14 +401,84 @@ test "Parser" {
         defer parser.deinit();
 
         try std.testing.expectEqual(2, parsed_result.items.len);
-        try std.testing.expectEqualStrings(":function1", InspectExprIdent(&test_string, parsed_result, .{0, 0}));
-        try std.testing.expectEqualStrings(":x", InspectExprIdent(&test_string, parsed_result, .{0, 1}));
-        try std.testing.expectEqualStrings(":function2", InspectExprIdent(&test_string, parsed_result, .{0, 2, 0}));
-        try std.testing.expectEqualStrings(":z", InspectExprIdent(&test_string, parsed_result, .{0, 2, 1}));
-        try std.testing.expectEqualStrings(":w", InspectExprIdent(&test_string, parsed_result, .{0, 2, 2}));
-        try std.testing.expectEqualStrings(":y", InspectExprIdent(&test_string, parsed_result, .{0, 3}));
-        try std.testing.expectEqualStrings(":function3", InspectExprIdent(&test_string, parsed_result, .{1, 0}));
-        try std.testing.expectEqualStrings(":a", InspectExprIdent(&test_string, parsed_result, .{1, 1}));
+        try std.testing.expectEqualStrings(":function1", InspectExprIdent(&test_string, parsed_result, .{ 0, 0 }));
+        try std.testing.expectEqualStrings(":x", InspectExprIdent(&test_string, parsed_result, .{ 0, 1 }));
+        try std.testing.expectEqualStrings(":function2", InspectExprIdent(&test_string, parsed_result, .{ 0, 2, 0 }));
+        try std.testing.expectEqualStrings(":z", InspectExprIdent(&test_string, parsed_result, .{ 0, 2, 1 }));
+        try std.testing.expectEqualStrings(":w", InspectExprIdent(&test_string, parsed_result, .{ 0, 2, 2 }));
+        try std.testing.expectEqualStrings(":y", InspectExprIdent(&test_string, parsed_result, .{ 0, 3 }));
+        try std.testing.expectEqualStrings(":function3", InspectExprIdent(&test_string, parsed_result, .{ 1, 0 }));
+        try std.testing.expectEqualStrings(":a", InspectExprIdent(&test_string, parsed_result, .{ 1, 1 }));
     }
 }
 
+var var_counter_index: u32 = 0;
+
+// Zig version of var_counter_index++
+fn next_index() u32 {
+    const index = var_counter_index;
+    var_counter_index += 1;
+    return index;
+}
+
+pub fn ast_to_graph(source: *Source, ast: std.ArrayList(*ExprValue), allocator: std.mem.Allocator) !eval.Book {
+    var book: eval.Book = try .init(allocator, &[_]eval.Rdx{}, &[_]void{}, allocator);
+    const new: eval.GraphStateContainer = .init(&book);
+    for (ast.items) |expr| {
+        graphify(source, expr, new); // Each unique top level expression will generate a disjoint graph
+    }
+}
+
+// Graphify meaning "turn into a graph"
+pub fn graphify(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Term, eval.Pos.Var } {
+    if (expr == .lst and expr.lst.items[0] == .iden) {
+        const iden_val = source.*[expr.lst.items[0].iden.start..expr.lst.items[0].iden.end];
+        if (std.mem.eql(u8, iden_val, "@") or std.mem.eql(u8, iden_val, ":apply")) {
+            return graphify_application_sexpr(source, expr, new);
+        } else if (std.mem.eql(u8, iden_val, "/") or std.mem.eql(u8, iden_val, ":lambda")) {
+            return graphify_abstraction_sexpr(source, expr, new)[0];
+        } else if (std.mem.eql(u8, iden_val, ":sup")) {
+            return graphify_sup_sexpr(source, expr, new);
+        } else {
+            return error.unknownNodeConstructorName;
+        }
+    } else {
+        return error.mustStartWithNodeDefSExpr;
+    }
+}
+pub fn graphify_pos(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Pos, eval.Neg.Sub } {
+    if (expr == .lst and expr.lst.items[0] == .iden) {
+        const iden_val = source.*[expr.lst.items[0].iden.start..expr.lst.items[0].iden.end];
+        if (std.mem.eql(u8, iden_val, "/") or std.mem.eql(u8, iden_val, ":lambda")) {
+            return graphify_abstraction_sexpr(source, expr, new)[0];
+        } else if (std.mem.eql(u8, iden_val, ":sup")) {
+            return graphify_sup_sexpr(source, expr, new);
+        } else {
+            return error.unknownNodeConstructorName;
+        }
+    } else {
+        return error.mustStartWithNodeDefSExpr;
+    }
+}
+
+pub fn graphify_neg(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{ eval.Neg, eval.Pos.Var } {
+    @panic("");
+}
+
+// Returns the node and the outgoing return id ()
+pub fn graphify_application_sexpr(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{eval.Pos.Lam, eval.Neg.Sub } {
+    const function = graphify_pos(source, expr.lst[1], new);
+    const argument = graphify(source, expr.lst[2], new);
+    const argument_result = argument[1];
+
+    const return_index = next_index();
+    const application = try new.App(argument_result, new.Var(return_index));
+
+    try .{new.Redex(function, application), return_index};
+}
+
+pub fn graphify_abstraction_sexpr(source: *Source, expr: *ExprValue, new: eval.GraphStateContainer) !.{eval.Pos.Lam, eval.Neg.Sub } {
+    const bnd = new.Sub(0);
+    const bod = graphify_neg(expr.lst[2]);
+    const abstraction = try new.Lam(bnd, bod); // bnd
+}
