@@ -92,34 +92,34 @@ fn wire(alloc: std.mem.Allocator) !struct { @"0": *Neg, @"1": *Pos } {
     return .{ .@"0" = neg, .@"1" = pos };
 }
 
-pub fn show(term: Term, vars: *Vars, subs: *Subs, alloc: std.mem.Allocator) ![]const u8 {
+pub fn show(term: Term, vars: *Vars, subs: *Subs, alloc: std.mem.Allocator, comptime verbose: bool) ![]const u8 {
     switch (term) {
         .Pos => {
             switch (term.Pos.*) {
                 .Var => {
                     const name = vars.get(term.Pos.Var.nam);
                     if (name == null) {
-                        return try std.fmt.allocPrint(alloc, "+{d}", .{term.Pos.Var.nam});
+                        return try std.fmt.allocPrint(alloc, if (verbose) "(Var {d})" else "+{d}", .{term.Pos.Var.nam});
                     } else {
-                        return try show(.{ .Pos = name.? }, vars, subs, alloc);
+                        return try show(.{ .Pos = name.? }, vars, subs, alloc, verbose);
                     }
                 },
                 .Nil => {
-                    return "+_";
+                    return if (verbose) "(Nil)" else "+_";
                 },
                 .Lam => {
-                    const bnd_fmt = try show(.{ .Neg = term.Pos.Lam.bnd }, vars, subs, alloc);
+                    const bnd_fmt = try show(.{ .Neg = term.Pos.Lam.bnd }, vars, subs, alloc, verbose);
                     defer alloc.free(bnd_fmt);
-                    const bod_fmt = try show(.{ .Pos = term.Pos.Lam.bod }, vars, subs, alloc);
+                    const bod_fmt = try show(.{ .Pos = term.Pos.Lam.bod }, vars, subs, alloc, verbose);
                     defer alloc.free(bod_fmt);
-                    return try std.fmt.allocPrint(alloc, "+({s} {s})", .{ bnd_fmt, bod_fmt });
+                    return try std.fmt.allocPrint(alloc, if (verbose) "(Lam {s} {s})" else "+({s} {s})", .{ bnd_fmt, bod_fmt });
                 },
                 .Sup => {
-                    const sp0_fmt = try show(.{ .Pos = term.Pos.Sup.sp0 }, vars, subs, alloc);
+                    const sp0_fmt = try show(.{ .Pos = term.Pos.Sup.sp0 }, vars, subs, alloc, verbose);
                     defer alloc.free(sp0_fmt);
-                    const sp1_fmt = try show(.{ .Pos = term.Pos.Sup.sp1 }, vars, subs, alloc);
+                    const sp1_fmt = try show(.{ .Pos = term.Pos.Sup.sp1 }, vars, subs, alloc, verbose);
                     defer alloc.free(sp1_fmt);
-                    return try std.fmt.allocPrint(alloc, "+{{{s} {s}}}", .{ sp0_fmt, sp1_fmt });
+                    return try std.fmt.allocPrint(alloc, if (verbose) "(Sup {s} {s})" else "+{{{s} {s}}}", .{ sp0_fmt, sp1_fmt });
                 },
             }
         },
@@ -127,28 +127,28 @@ pub fn show(term: Term, vars: *Vars, subs: *Subs, alloc: std.mem.Allocator) ![]c
             switch (term.Neg.*) {
                 .Sub => {
                     const name = vars.get(term.Neg.Sub.nam);
-                    if (name == null) {
-                        return try std.fmt.allocPrint(alloc, "-{d}", .{term.Neg.Sub.nam});
+                    if (name) |name_safe| {
+                        return try show(.{ .Pos = name_safe }, vars, subs, alloc, verbose);
                     } else {
-                        return try show(.{ .Pos = name.? }, vars, subs, alloc);
+                        return try std.fmt.allocPrint(alloc, if (verbose) "(Sub {d})" else "-{d}", .{term.Neg.Sub.nam});
                     }
                 },
                 .Era => {
-                    return "-_";
+                    return if (verbose) "(Era)" else "-_";
                 },
                 .App => {
-                    const arg_fmt = try show(.{ .Pos = term.Neg.App.arg }, vars, subs, alloc);
+                    const arg_fmt = try show(.{ .Pos = term.Neg.App.arg }, vars, subs, alloc, verbose);
                     defer alloc.free(arg_fmt);
-                    const ret_fmt = try show(.{ .Neg = term.Neg.App.ret }, vars, subs, alloc);
+                    const ret_fmt = try show(.{ .Neg = term.Neg.App.ret }, vars, subs, alloc, verbose);
                     defer alloc.free(ret_fmt);
-                    return try std.fmt.allocPrint(alloc, "-({s} {s})", .{ arg_fmt, ret_fmt });
+                    return try std.fmt.allocPrint(alloc, if (verbose) "(App {s} {s})" else "-({s} {s})", .{ arg_fmt, ret_fmt });
                 },
                 .Dup => {
-                    const dp0_fmt = try show(.{ .Neg = term.Neg.Dup.dp0 }, vars, subs, alloc);
+                    const dp0_fmt = try show(.{ .Neg = term.Neg.Dup.dp0 }, vars, subs, alloc, verbose);
                     defer alloc.free(dp0_fmt);
-                    const dp1_fmt = try show(.{ .Neg = term.Neg.Dup.dp1 }, vars, subs, alloc);
+                    const dp1_fmt = try show(.{ .Neg = term.Neg.Dup.dp1 }, vars, subs, alloc, verbose);
                     defer alloc.free(dp1_fmt);
-                    return try std.fmt.allocPrint(alloc, "-{{{s} {s}}}", .{ dp0_fmt, dp1_fmt });
+                    return try std.fmt.allocPrint(alloc, if (verbose) "(Dup {s} {s})" else "-{{{s} {s}}}", .{ dp0_fmt, dp1_fmt });
                 },
             }
         },
@@ -185,6 +185,11 @@ pub fn show(term: Term, vars: *Vars, subs: *Subs, alloc: std.mem.Allocator) ![]c
 pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocator) !void {
     while (book.pop()) |redex_kv| {
         const redex = redex_kv.key;
+        const pre_reduce_neg = try show(.{ .Neg = redex.neg }, vars, subs, allocator, true);
+        const pre_reduce_pos = try show(.{ .Pos = redex.pos }, vars, subs, allocator, true);
+        std.debug.print("****************\n  Pre reduce neg: {s}\n  Pre reduce pos: {s}\n", .{ pre_reduce_neg, pre_reduce_pos });
+        allocator.free(pre_reduce_neg);
+        allocator.free(pre_reduce_pos);
         if (redex.pos.* == .Var) {
             if (vars.fetchRemove(redex.pos.Var.nam)) |target| {
                 try book.put(allocator, .{ .neg = redex.neg, .pos = target.value }, {});
@@ -208,14 +213,14 @@ pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocato
                         allocator.destroy(redex.pos);
                     },
                     .Lam => |pos_lam| {
-                        const new_nil = try allocator.create(Pos);
-                        new_nil.* = .{ .Nil = .{} };
-                        try book.put(allocator, .{ .neg = pos_lam.bnd, .pos = new_nil }, {});
-                        try book.put(allocator, .{ .neg = redex.neg, .pos = pos_lam.bod }, {});
+                        try new.Redex(.{ pos_lam.bnd, try new.Nil() });
+                        try new.Redex(.{ redex.neg, pos_lam.bod });
+                        allocator.destroy(redex.pos); // TODO: You don't need to destroy this.
                     },
                     .Sup => |pos_sup| {
-                        try new.Redex(.{ .neg = try new.Era(), .pos = pos_sup.sp0 });
-                        try book.put(allocator, .{ .neg = redex.neg, .pos = pos_sup.sp1 }, {});
+                        try new.Redex(.{ try new.Era(), pos_sup.sp0 });
+                        try new.Redex(.{ redex.neg, pos_sup.sp1 });
+                        allocator.destroy(redex.pos);
                     },
                     else => {},
                 }
@@ -367,16 +372,22 @@ test "Basic reductions" {
         var vars: Vars = .init(allocator);
         var book: Book = try .init(allocator, &[_]Rdx{}, &[_]void{}, allocator);
         var new: GraphStateContainer = .init(&book);
-        const rhs_lambda = try new.Lam(try new.Dup(try new.Sub(500), try new.App(try new.Var(500), try new.Sub(501))), try new.Var(501));
-        const lhs_application = try new.App(try new.Lam(try new.Sub(502), try new.Var(502)), try new.Sub(503));
-        const root: Term = .{ .Pos = try new.Var(503) };
+        // const rhs_lambda = try new.Lam(try new.Dup(try new.Sub(500), try new.App(try new.Var(500), try new.Sub(501))), try new.Var(501));
+        // const lhs_application = try new.App(try new.Lam(try new.Sub(502), try new.Var(502)), try new.Sub(503));
+        // const root: Term = .{ .Pos = try new.Var(503) };
+        // try new.Redex(.{ lhs_application, rhs_lambda });
+        const rhs_lambda = try new.Lam(try new.Sub(500), try new.Var(500));
+        const lhs_application = try new.App(try new.Var(501), try new.Sub(502));
         try new.Redex(.{ lhs_application, rhs_lambda });
+        try new.Redex(.{ try new.App(try new.Var(502), try new.Sub(501)), try new.Var(503) });
+        const root: Term = .{ .Neg = try new.Sub(503) };
         try reduce(&book, &vars, &subs, allocator);
-        const formatted = try show(root, &vars, &subs, allocator);
+        const formatted = try show(root, &vars, &subs, allocator, true);
         std.debug.print("{s}\n", .{formatted});
 
-        rhs_lambda.deinit(allocator);
-        lhs_application.deinit(allocator);
+        // rhs_lambda.deinit(allocator);
+        // lhs_application.deinit(allocator);
+        // root.Neg.deinit(allocator);
         allocator.free(formatted);
         vars.deinit();
         subs.deinit();
