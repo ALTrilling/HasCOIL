@@ -1,0 +1,6 @@
+{
+  "$schema": "https://raw.githubusercontent.com/zigtools/zls/refs/heads/master/schema.json",
+  "zig_exe_path": "zig",
+  "semantic_tokens": "partial",
+  "enable_build_on_save": true
+}

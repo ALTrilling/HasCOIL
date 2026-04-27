@@ -30,6 +30,13 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
+    const exe_check = b.addExecutable(.{
+        .name = "foo",
+        .root_module = exe.root_module,
+    });
+    const check = b.step("check", "Check if foo compiles");
+    check.dependOn(&exe_check.step);
+
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });

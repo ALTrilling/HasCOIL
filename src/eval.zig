@@ -1,4 +1,5 @@
 const std = @import("std");
+const ast = @import("ast.zig");
 
 pub const Name = u32;
 
@@ -183,6 +184,7 @@ pub fn show(term: Term, vars: *Vars, subs: *Subs, alloc: std.mem.Allocator, comp
 //
 
 pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocator) !void {
+    var new: GraphStateContainer = .init(book, allocator);
     while (book.pop()) |redex_kv| {
         const redex = redex_kv.key;
         const pre_reduce_neg = try show(.{ .Neg = redex.neg }, vars, subs, allocator, true);
@@ -271,7 +273,8 @@ pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocato
                         try new.Redex(.{ neg_dup.dp1, try new.Lam(wire3.@"0", wire4.@"1") });
                         try new.Redex(.{ lam_bnd, try new.Sup(wire1.@"1", wire3.@"1") });
                         redex.neg.* = .{ .Dup = .{ .dp0 = wire2.@"0", .dp1 = wire4.@"0" } };
-                  std.mem.eql(u8,      try new.Redex(.{ redex.neg, lam_bod });
+                        try new.Redex(.{ redex.neg, lam_bod});
+                        // std.mem.eql(u8, try new.Redex(.{ redex.neg, lam_bod }); Don't know why this ended up here.
                     },
                     .Sup => |pos_sup| {
                         try new.Redex(.{ neg_dup.dp0, pos_sup.sp0 });
@@ -289,6 +292,9 @@ pub fn reduce(book: *Book, vars: *Vars, subs: *Subs, allocator: std.mem.Allocato
 pub const GraphStateContainer = struct {
     allocator: std.mem.Allocator,
     book: *Book,
+    // idenstack maps <start> - <end> to id
+    idenstack: std.ArrayList(IdenStackStruct),
+    const IdenStackStruct = struct{ iden: []u8, id: u32 };
 
     pub const Self = @This();
 
@@ -296,7 +302,24 @@ pub const GraphStateContainer = struct {
         return .{
             .allocator = allocator,
             .book = book,
+            .idenstack = std.ArrayList(IdenStackStruct).initCapacity(allocator, 0) catch @panic("Couldn't allocate stack in GraphStateContainer"),
         };
+    }
+    fn GetIndex(self: *Self, key: []u8) !*Neg {
+        for (self.idenstack.items) |item| {
+            if (std.mem.eql(u8, item, key)) {
+                return item.id;
+            }
+        }
+        return error.CouldNotGetVar;
+    }
+
+    pub fn GetNewSub(self: *Self, name: []u8) !*Neg {
+        return Sub(self.GetIndex(name));
+    }
+
+    pub fn PushIden(self: *Self, name: []u8, variable: *Pos) void {
+        self.idenstack.push(.{ .iden = name, .id = variable.Var.nam });
     }
 
     pub fn Redex(self: *Self, content: anytype) !void {
@@ -310,6 +333,7 @@ pub const GraphStateContainer = struct {
         } };
         return app;
     }
+
     pub fn Dup(self: *const Self, dp0: *Neg, dp1: *Neg) !*Neg {
         const app = try self.allocator.create(Neg);
         app.* = .{ .Dup = .{
@@ -356,12 +380,12 @@ pub const GraphStateContainer = struct {
         return app;
     }
 
-    pub fn InvertSub(self: *Neg.Sub) Pos.Var {
-        return Pos.Var { .name = self.nam };
+    pub fn InvertSub(self: *Neg) Pos {
+        return Pos.Var { .name = self.Sub.nam };
     }
 
-    pub fn InvertVar(self: *Pos.Var) Neg.Sub {
-        return Var.Sub { .name = self.nam };
+    pub fn InvertVar(self: *Pos) Neg {
+        return Var.Sub { .name = self.Var.nam };
     }
 };
 
@@ -370,8 +394,8 @@ test "Basic reductions" {
     {
         var subs: Subs = .init(allocator);
         var vars: Vars = .init(allocator);
-        var book: Book = try .init(allocator, &[_]Rdx{}, &[_]void{}, allocator);
-        var new: GraphStateContainer = .init(&book);
+        var book: Book = try .init(allocator, &[_]Rdx{}, &[_]void{});
+        var new: GraphStateContainer = .init(&book, allocator);
         // const rhs_lambda = try new.Lam(try new.Dup(try new.Sub(500), try new.App(try new.Var(500), try new.Sub(501))), try new.Var(501));
         // const lhs_application = try new.App(try new.Lam(try new.Sub(502), try new.Var(502)), try new.Sub(503));
         // const root: Term = .{ .Pos = try new.Var(503) };
@@ -379,15 +403,15 @@ test "Basic reductions" {
         const rhs_lambda = try new.Lam(try new.Sub(500), try new.Var(500));
         const lhs_application = try new.App(try new.Var(501), try new.Sub(502));
         try new.Redex(.{ lhs_application, rhs_lambda });
-        try new.Redex(.{ try new.App(try new.Var(502), try new.Sub(501)), try new.Var(503) });
-        const root: Term = .{ .Neg = try new.Sub(503) };
+        // try new.Redex(.{ try new.App(try new.Var(502), try new.Sub(501)), try new.Var(503) });
+        const root: Term = .{ .Neg = try new.App(try new.Var(502), try new.Sub(501)) };//try new.Sub(503) };
         try reduce(&book, &vars, &subs, allocator);
         const formatted = try show(root, &vars, &subs, allocator, true);
         std.debug.print("{s}\n", .{formatted});
 
         // rhs_lambda.deinit(allocator);
         // lhs_application.deinit(allocator);
-        // root.Neg.deinit(allocator);
+        root.Neg.deinit(allocator);
         allocator.free(formatted);
         vars.deinit();
         subs.deinit();
